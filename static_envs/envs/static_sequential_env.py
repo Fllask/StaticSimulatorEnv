@@ -3,12 +3,12 @@ import pygame
 from typing import Literal
 import gymnasium as gym
 from gymnasium import spaces
-from discrete_blocks_norot import DiscreteBlockNorot as Block
-from discrete_simulator_noblocks import DiscreteSimulatorNoBlocks
-from physics_scipy import StabilitySolverDiscrete as Ph
+from static_envs.tools.discrete_blocks_norot import DiscreteBlockNorot as Block
+from static_envs.tools.discrete_simulator_noblocks import DiscreteSimulatorNoBlocks
+from static_envs.tools.physics_scipy import StabilitySolverDiscrete as Ph
 import numpy as np
-import render_pygame as render
-class sequential_discrete_env(gym.Env):
+import static_envs.tools.render_pygame as render
+class SequentialDiscreteGeneric(gym.Env):
     metadata = {"render_modes": ["human", "agent_input"], "render_fps": 1}
 
     def __init__(self, render_mode=None,
@@ -23,7 +23,7 @@ class sequential_discrete_env(gym.Env):
         self.gridsize = gridsize
         self.friction_coef = friction_coef 
         self.n_robots = n_robots 
-        self.mask_generator = mask_generator
+        self.mask_generator = mask_generator or generate_mask_parametrized
         self.scale = 10  
         
         
@@ -50,14 +50,14 @@ class sequential_discrete_env(gym.Env):
         else:
             self.block_type = block_list
         
-        self.observation_space = spaces.Dict({"occ": spaces.MultiBinary((self.gridsize[0],self.gridsize[1],2)),
-                                                  "obstacles":spaces.MultiBinary((self.gridsize[0],self.gridsize[1],2)),
-                                                  "objectives":spaces.MultiBinary((self.gridsize[0],self.gridsize[1],2)),
-                                                  "sides":spaces.MultiBinary((self.gridsize[0],self.gridsize[1],2*3)),
-                                                  "grounds":spaces.MultiBinary((self.gridsize[0],self.gridsize[1],2)),
-                                                  "hold":spaces.MultiBinary((self.gridsize[0],self.gridsize[1],2*self.n_robots)),
+        self.observation_space = spaces.Dict({"occ": spaces.Box(low=0,high= 1, shape = (self.gridsize[0],self.gridsize[1],2),dtype=int),
+                                                  "obstacles":spaces.Box(low=0,high= 1, shape = (self.gridsize[0],self.gridsize[1],2),dtype=int),
+                                                  "objectives":spaces.Box(low=0,high= 1, shape = (self.gridsize[0],self.gridsize[1],2),dtype=int),
+                                                  "sides":spaces.Box(low=0,high= 1, shape = (self.gridsize[0],self.gridsize[1],6),dtype=int),
+                                                  "grounds":spaces.Box(low=0,high= 1, shape = (self.gridsize[0],self.gridsize[1],2),dtype=int),
+                                                  "hold":spaces.Box(low=0,high= 1, shape = (self.gridsize[0],self.gridsize[1],2*self.n_robots),dtype=int),
                                                   "turn":spaces.Discrete(self.n_robots),
-                                                  "mask":spaces.MultiBinary((gridsize[0],gridsize[1],len(self.block_type)))
+                                                  "mask":spaces.Box(low=0,high= 1, shape = (len(self.block_type),self.gridsize[0],self.gridsize[1]),dtype=bool),
                                                   })
         
         self.action_space = spaces.Box(low=0,high=np.array([gridsize[0]-1,gridsize[1]-1,len(self.block_type)-1]),dtype=int)
@@ -96,7 +96,9 @@ class sequential_discrete_env(gym.Env):
         # We need the following line to seed self.np_random
         super().reset(seed=seed)
         self.sim = copy.deepcopy(self.setup)
-
+        options = options or {'target_type':'random_gap',
+                              'gap_range':[1,10],
+                              }
         if options['target_type']=='random_gap':
             gap = self.np_random.integers(options['gap_range'][0],options['gap_range'][1])
             self.sim.add_ground(Block([[i,0,1] for i in range(self.gridsize[0]-1-gap)],muc=self.friction_coef),[0,0])
@@ -185,7 +187,7 @@ def generate_mask_parametrized(grid,block_choices,action_choice,allow_float,allo
         return mask 
 if __name__ == "__main__":
     print("Start test")
-    tmp_env = sequential_discrete_env(mask_generator=generate_mask_parametrized)
+    tmp_env = SequentialDiscreteGeneric()
     tmp_env.render_mode='rgb_array'
     # wrap the env in the record video
     env = gym.wrappers.RenderCollection(tmp_env,False)
